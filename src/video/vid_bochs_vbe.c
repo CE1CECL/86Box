@@ -329,106 +329,7 @@ gen_mode_info(int hdisplay, int vdisplay, float vrefresh, vbe_mode_info_t* mode_
 void
 bochs_vbe_recalctimings(svga_t* svga)
 {
-    bochs_vbe_t *dev  = (bochs_vbe_t *) svga->priv;
 
-    if (dev->vbe_regs[VBE_DISPI_INDEX_ENABLE] & VBE_DISPI_ENABLED) {
-        vbe_mode_info_t mode = { 0 };
-        svga->bpp = dev->vbe_regs[VBE_DISPI_INDEX_BPP];
-        dev->vbe_regs[VBE_DISPI_INDEX_XRES] &= ~7;
-        if (dev->vbe_regs[VBE_DISPI_INDEX_XRES] == 0) {
-            dev->vbe_regs[VBE_DISPI_INDEX_XRES] = 8;
-        }
-        if (dev->vbe_regs[VBE_DISPI_INDEX_VIRT_WIDTH] > VBE_DISPI_MAX_XRES)
-            dev->vbe_regs[VBE_DISPI_INDEX_VIRT_WIDTH] = VBE_DISPI_MAX_XRES;
-        if (dev->vbe_regs[VBE_DISPI_INDEX_VIRT_WIDTH] < dev->vbe_regs[VBE_DISPI_INDEX_XRES])
-            dev->vbe_regs[VBE_DISPI_INDEX_VIRT_WIDTH] = dev->vbe_regs[VBE_DISPI_INDEX_XRES];
-        if (dev->vbe_regs[VBE_DISPI_INDEX_X_OFFSET] > VBE_DISPI_MAX_XRES)
-            dev->vbe_regs[VBE_DISPI_INDEX_X_OFFSET] = VBE_DISPI_MAX_XRES;
-        if (dev->vbe_regs[VBE_DISPI_INDEX_Y_OFFSET] > VBE_DISPI_MAX_YRES)
-            dev->vbe_regs[VBE_DISPI_INDEX_Y_OFFSET] = VBE_DISPI_MAX_YRES;
-
-        if (dev->vbe_regs[VBE_DISPI_INDEX_YRES] == 0)
-            dev->vbe_regs[VBE_DISPI_INDEX_YRES] = 1;
-        if (dev->vbe_regs[VBE_DISPI_INDEX_YRES] > VBE_DISPI_MAX_YRES)
-            dev->vbe_regs[VBE_DISPI_INDEX_YRES] = VBE_DISPI_MAX_YRES;
-        gen_mode_info(dev->vbe_regs[VBE_DISPI_INDEX_XRES],
-                      dev->vbe_regs[VBE_DISPI_INDEX_YRES], 72.f, &mode);
-        svga->char_width = 1;
-        svga->dots_per_clock = 1;
-        svga->clock = (cpuclock * (double) (1ULL << 32)) / (mode.dot_clock * 1000.);
-        svga->dispend = mode.vdisplay;
-        svga->hdisp = mode.hdisplay;
-        svga->vsyncstart = mode.vsync_start;
-        svga->vtotal = mode.vtotal;
-        svga->htotal = mode.htotal;
-        svga->hblankstart = mode.hdisplay;
-        svga->hblankend = mode.hdisplay + (mode.htotal - mode.hdisplay - 1);
-        svga->vblankstart = svga->dispend; /* no vertical overscan. */
-        svga->rowcount = 0;
-        svga->hoverride = 1;
-        if (dev->vbe_regs[VBE_DISPI_INDEX_BPP] != 4) {
-            svga->fb_only = 1;
-            svga->adv_flags |= FLAG_NO_SHIFT3;
-        } else {
-            svga->fb_only = 0;
-            svga->adv_flags &= ~FLAG_NO_SHIFT3;
-        }
-
-        svga->bpp = dev->vbe_regs[VBE_DISPI_INDEX_BPP];
-
-        if (svga->bpp == 4) {
-            svga->rowoffset = (dev->vbe_regs[VBE_DISPI_INDEX_VIRT_WIDTH] / 2) >> 3;
-            svga->ma_latch  = (dev->vbe_regs[VBE_DISPI_INDEX_Y_OFFSET] * svga->rowoffset) +
-                              (dev->vbe_regs[VBE_DISPI_INDEX_X_OFFSET] >> 3);
-        } else {
-            svga->rowoffset = dev->vbe_regs[VBE_DISPI_INDEX_VIRT_WIDTH] * ((svga->bpp == 15) ? 2 : (svga->bpp / 8));
-            svga->ma_latch = (dev->vbe_regs[VBE_DISPI_INDEX_Y_OFFSET] * svga->rowoffset) +
-                             (dev->vbe_regs[VBE_DISPI_INDEX_X_OFFSET] * ((svga->bpp == 15) ? 2 : (svga->bpp / 8)));            
-        }
-        if (svga->ma_latch != dev->ma_latch_old) {
-            if (svga->bpp == 4) {
-                svga->maback = (svga->maback - (dev->ma_latch_old << 2)) +
-                               (svga->ma_latch << 2);
-            } else {
-                svga->maback = (svga->maback - (dev->ma_latch_old)) +
-                                (svga->ma_latch);
-                dev->ma_latch_old = svga->ma_latch;
-            }
-        }
-
-        if (svga->bpp == 4)
-            dev->vbe_regs[VBE_DISPI_INDEX_VIRT_HEIGHT] = (svga->vram_max * 2) / dev->vbe_regs[VBE_DISPI_INDEX_VIRT_WIDTH];
-        else
-            dev->vbe_regs[VBE_DISPI_INDEX_VIRT_HEIGHT] = (svga->vram_max / ((svga->bpp == 15) ? 2 : (svga->bpp / 8))) / dev->vbe_regs[VBE_DISPI_INDEX_VIRT_WIDTH];
-        svga->split = 0xffffff;
-
-        switch (svga->bpp) {
-            case 4:
-                svga->render = svga_render_4bpp_highres;
-                break;
-            default:
-            case 8:
-                svga->render = svga_render_8bpp_clone_highres;
-                break;
-            case 15:
-                svga->render = svga_render_15bpp_highres;
-                break;
-            case 16:
-                svga->render = svga_render_16bpp_highres;
-                break;
-            case 24:
-                svga->render = svga_render_24bpp_highres;
-               break;
-            case 32:
-                svga->render = svga_render_32bpp_highres;
-                break;
-        }
-    } else {
-        svga->fb_only = 0;
-        svga->packed_4bpp = 0;
-        svga->adv_flags &= ~FLAG_NO_SHIFT3;
-        svga->hoverride = 0;
-    }
 }
 
 static uint32_t vbe_read_cfg(void *priv)
@@ -442,10 +343,10 @@ static uint32_t vbe_read_cfg(void *priv)
     switch (u16Id)
     {
         case VBE_DISPI_CFG_ID_VERSION:   val = 1; break;
-        case VBE_DISPI_CFG_ID_VRAM_SIZE: val = 1; break;
+        case VBE_DISPI_CFG_ID_VRAM_SIZE: val = pThis->vram_size; break;
         case VBE_DISPI_CFG_ID_3D:        val = 1; break;
-        case VBE_DISPI_CFG_ID_VMSVGA:    val = 1; break;
-        case VBE_DISPI_CFG_ID_VMSVGA_DX: val = 1; break;
+        case VBE_DISPI_CFG_ID_VMSVGA:    val = 0; break;
+        case VBE_DISPI_CFG_ID_VMSVGA_DX: val = 0; break;
         default:
            return 0; /* Not supported. */
     }
@@ -1071,7 +972,6 @@ bochs_vbe_init(const device_t *info)
     mem_mapping_disable(&dev->linear_mapping);
     mem_mapping_disable(&dev->linear_mapping_2);
 
-    dev->svga.bpp     = 8;
     dev->svga.miscout = 1;
 
     dev->bank_gran    = 64;
