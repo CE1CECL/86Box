@@ -163,28 +163,28 @@ gen_mode_info(int hdisplay, int vdisplay, float vrefresh, vbe_mode_info_t* mode_
         mode_info->vrefresh = 60.0;
 
     /* 1. Required field rate */
-    const float vfield_rate = mode_info->vrefresh;
+    float vfield_rate = mode_info->vrefresh;
 
     /* 2. Horizontal pixels */
-    const int hdisplay_rnd  = mode_info->hdisplay - (mode_info->hdisplay % CVT_H_GRANULARITY);
+    int hdisplay_rnd  = mode_info->hdisplay - (mode_info->hdisplay % CVT_H_GRANULARITY);
 
     /* 3. Determine left and right borders */
-    const int   hmargin     = 0;
+    int   hmargin     = 0;
 
     /* 4. Find total active pixels */
     mode_info->hdisplay     = hdisplay_rnd + (2 * hmargin);
 
     /* 5. Find number of lines per field */
-    const int vdisplay_rnd  = mode_info->vdisplay;
+    int vdisplay_rnd  = mode_info->vdisplay;
 
     /* 6. Find top and bottom margins */
-    const  int   vmargin    = 0;
+     int   vmargin    = 0;
 
     mode_info->vdisplay     = mode_info->vdisplay + 2 * vmargin;
 
     /* 7. interlace */
     /* Please rename this */
-    const float interlace   = 0.0;
+    float interlace   = 0.0;
 
     /* Determine vsync Width from aspect ratio */
     if (!(mode_info->vdisplay % 3) && ((mode_info->vdisplay * 4 / 3) == mode_info->hdisplay))
@@ -214,7 +214,7 @@ gen_mode_info(int hdisplay, int vdisplay, float vrefresh, vbe_mode_info_t* mode_
 #define CVT_HSYNC_PERCENTAGE 8
 
     /* 8. Estimated Horizontal period */
-    const float hperiod = ((float) (1000000.0 / vfield_rate - CVT_MIN_VSYNC_BP)) /
+    float hperiod = ((float) (1000000.0 / vfield_rate - CVT_MIN_VSYNC_BP)) /
                           (vdisplay_rnd + 2 * vmargin + CVT_MIN_V_PORCH_RND + interlace);
 
     /* 9. Find number of lines in sync + backporch */
@@ -393,10 +393,10 @@ bochs_vbe_recalctimings(svga_t* svga)
 }
 
 uint16_t
-bochs_vbe_inw(const uint16_t addr, void *priv)
+bochs_vbe_inw(uint16_t addr, void *priv)
 {
-    const bochs_vbe_t *dev          = (bochs_vbe_t *) priv;
-    const bool         vbe_get_caps = !!(dev->vbe_regs[VBE_DISPI_INDEX_ENABLE] &
+    bochs_vbe_t *dev          = (bochs_vbe_t *) priv;
+    bool         vbe_get_caps = !!(dev->vbe_regs[VBE_DISPI_INDEX_ENABLE] &
                                          VBE_DISPI_GETCAPS);
     uint16_t           ret;
 
@@ -436,14 +436,14 @@ bochs_vbe_inw(const uint16_t addr, void *priv)
             ret = dev->vbe_regs[dev->vbe_index];
             break;
     }
-
+printf("bochs_vbe_inw:0x%x & 0x%x\n", dev->vbe_index, ret);
     return ret;
 }
 
 uint32_t
-bochs_vbe_inl(const uint16_t addr, void *priv)
+bochs_vbe_inl(uint16_t addr, void *priv)
 {
-    const bochs_vbe_t *dev          = (bochs_vbe_t *) priv;
+    bochs_vbe_t *dev          = (bochs_vbe_t *) priv;
     uint32_t           ret;
 
     if (addr == 0x1ce)
@@ -455,7 +455,7 @@ bochs_vbe_inl(const uint16_t addr, void *priv)
 }
 
 void
-bochs_vbe_outw(const uint16_t addr, const uint16_t val, void *priv)
+bochs_vbe_outw(uint16_t addr, uint16_t val, void *priv)
 {
     bochs_vbe_t  *dev  = (bochs_vbe_t *) priv;
 
@@ -463,7 +463,9 @@ bochs_vbe_outw(const uint16_t addr, const uint16_t val, void *priv)
         dev->vbe_index = val;
     else if ((addr == 0x1cf) || (addr == 0x1d0))  switch (dev->vbe_index) {
         case VBE_DISPI_INDEX_ID:
-            dev->vbe_regs[dev->vbe_index] = val;
+            if (val != 0xbe01) {
+                dev->vbe_regs[dev->vbe_index] = val;
+            }
             break;
         case VBE_DISPI_INDEX_XRES:
         case VBE_DISPI_INDEX_YRES:
@@ -547,10 +549,11 @@ bochs_vbe_outw(const uint16_t addr, const uint16_t val, void *priv)
             dev->vbe_regs[dev->vbe_index] = val;
             break;
     }
+printf("bochs_vbe_outw:0x%x & 0x%x\n", dev->vbe_index, val);
 }
 
 void
-bochs_vbe_outl(const uint16_t addr, const uint32_t val, void *priv)
+bochs_vbe_outl(uint16_t addr, uint32_t val, void *priv)
 {
     bochs_vbe_outw(addr, val & 0xffff, priv);
     bochs_vbe_outw(addr + 2, val >> 16, priv);
@@ -646,9 +649,9 @@ bochs_vbe_in(uint16_t addr, void *priv)
 }
 
 static uint8_t
-bochs_vbe_pci_read(const int func, const int addr, void *priv)
+bochs_vbe_pci_read(int func, int addr, void *priv)
 {
-    const bochs_vbe_t *dev = (bochs_vbe_t *) priv;
+    bochs_vbe_t *dev = (bochs_vbe_t *) priv;
     uint8_t            ret = 0x00;
 
     if (func == 0x00)  switch (addr) {
@@ -729,7 +732,7 @@ bochs_vbe_disable_handlers(bochs_vbe_t *dev)
 }
 
 static void
-bochs_vbe_pci_write(const int func, const int addr, const uint8_t val, void *priv)
+bochs_vbe_pci_write(int func, int addr, uint8_t val, void *priv)
 {
     bochs_vbe_t *dev = (bochs_vbe_t *) priv;
 
@@ -759,6 +762,7 @@ bochs_vbe_pci_write(const int func, const int addr, const uint8_t val, void *pri
             }
             break;
         case 0x13:
+            // val &= (~(dev->vram_size - 1)) >> 24;
             dev->pci_regs[addr] = val;
 
             mem_mapping_disable(&dev->linear_mapping_2);
@@ -911,7 +915,7 @@ bochs_vbe_force_redraw(void *priv)
     bochs_vbe->svga.fullchange = changeframecount;
 }
 
-static const device_config_t bochs_vbe_config[] = {
+static device_config_t bochs_vbe_config[] = {
     // clang-format off
     {
         .name = "revision",
