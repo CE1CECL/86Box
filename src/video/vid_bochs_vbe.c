@@ -10,11 +10,13 @@
  *
  *          Uses code from libxcvt to calculate CRTC timings.
  *
- * Authors: Cacodemon345
+ * Authors: Christopher Lentocha
+ *          Cacodemon345
  *          The Bochs Project
  *          Fabrice Bellard
  *          The libxcvt authors
  *
+ *          Copyright 2025 Christopher Lentocha
  *          Copyright 2024 Cacodemon345
  *          Copyright 2003 Fabrice Bellard
  *          Copyright 2002-2024 The Bochs Project
@@ -443,8 +445,8 @@ bochs_vbe_recalctimings(svga_t* svga)
 
 static uint32_t vbe_read_cfg(void *priv)
 {
-    bochs_vbe_t *pThis = (bochs_vbe_t *) priv;
-    const uint16_t u16Cfg = pThis->vbe_regs[VBE_DISPI_INDEX_CFG];
+    bochs_vbe_t *dev = (bochs_vbe_t *) priv;
+    const uint16_t u16Cfg = dev->vbe_regs[VBE_DISPI_INDEX_CFG];
     const uint16_t u16Id = u16Cfg & VBE_DISPI_CFG_MASK_ID;
     const bool fQuerySupport = RT_BOOL(u16Cfg & VBE_DISPI_CFG_MASK_SUPPORT);
 
@@ -452,7 +454,7 @@ static uint32_t vbe_read_cfg(void *priv)
     switch (u16Id)
     {
         case VBE_DISPI_CFG_ID_VERSION:   val = 1; break;
-        case VBE_DISPI_CFG_ID_VRAM_SIZE: val = pThis->vram_size; break;
+        case VBE_DISPI_CFG_ID_VRAM_SIZE: val = dev->vram_size; break;
         case VBE_DISPI_CFG_ID_3D:        val = 1; break;
         case VBE_DISPI_CFG_ID_VMSVGA:    val = 0; break;
         case VBE_DISPI_CFG_ID_VMSVGA_DX: val = 0; break;
@@ -466,15 +468,15 @@ static uint32_t vbe_read_cfg(void *priv)
 uint16_t
 bochs_vbe_inw(uint16_t addr, void *priv)
 {
-    bochs_vbe_t *pThis = (bochs_vbe_t *) priv;
+    bochs_vbe_t *dev = (bochs_vbe_t *) priv;
     uint32_t val;
 
-    uint16_t idxVbe = pThis->vbe_index;
+    uint16_t idxVbe = dev->vbe_index;
     if (addr == 0x1ce) {
-        val = pThis->vbe_index;
+        val = dev->vbe_index;
     } else if (idxVbe < VBE_DISPI_INDEX_NB)
-    {
-        if (pThis->vbe_regs[VBE_DISPI_INDEX_ENABLE] & VBE_DISPI_GETCAPS)
+      {
+        if (dev->vbe_regs[VBE_DISPI_INDEX_ENABLE] & VBE_DISPI_GETCAPS)
         {
             switch (idxVbe)
             {
@@ -490,7 +492,7 @@ bochs_vbe_inw(uint16_t addr, void *priv)
                     break;
                 default:
                     assert(idxVbe < VBE_DISPI_INDEX_NB);
-                    val = pThis->vbe_regs[idxVbe];
+                    val = dev->vbe_regs[idxVbe];
                     break;
             }
         }
@@ -507,7 +509,7 @@ bochs_vbe_inw(uint16_t addr, void *priv)
                     break;
                 default:
                     assert(idxVbe < VBE_DISPI_INDEX_NB);
-                    val = pThis->vbe_regs[idxVbe];
+                    val = dev->vbe_regs[idxVbe];
                     break;
             }
         }
@@ -552,12 +554,12 @@ static uint32_t calc_line_pitch(uint16_t bpp, uint16_t width)
 
 static void recalculate_data(void *priv)
 {
-    bochs_vbe_t *pThis = (bochs_vbe_t *) priv;
-    svga_recalctimings(&pThis->svga);
-    svga_t * svga = &pThis->svga;
-    uint16_t cBPP        = pThis->vbe_regs[VBE_DISPI_INDEX_BPP];
-    uint16_t cVirtWidth  = pThis->vbe_regs[VBE_DISPI_INDEX_VIRT_WIDTH];
-    uint16_t cX          = pThis->vbe_regs[VBE_DISPI_INDEX_XRES];
+    bochs_vbe_t *dev = (bochs_vbe_t *) priv;
+    svga_recalctimings(&dev->svga);
+    svga_t * svga = &dev->svga;
+    uint16_t cBPP        = dev->vbe_regs[VBE_DISPI_INDEX_BPP];
+    uint16_t cVirtWidth  = dev->vbe_regs[VBE_DISPI_INDEX_VIRT_WIDTH];
+    uint16_t cX          = dev->vbe_regs[VBE_DISPI_INDEX_XRES];
     if (!cBPP || !cX)
         return;  /* Not enough data has been set yet. */
     uint32_t cbLinePitch = calc_line_pitch(cBPP, cVirtWidth);
@@ -565,89 +567,90 @@ static void recalculate_data(void *priv)
         cbLinePitch      = calc_line_pitch(cBPP, cX);
     if (!cbLinePitch)
         return;
-    uint32_t cVirtHeight = pThis->vram_size / cbLinePitch;
-    uint16_t offX        = pThis->vbe_regs[VBE_DISPI_INDEX_X_OFFSET];
-    uint16_t offY        = pThis->vbe_regs[VBE_DISPI_INDEX_Y_OFFSET];
+    uint32_t cVirtHeight = dev->vram_size / cbLinePitch;
+    uint16_t offX        = dev->vbe_regs[VBE_DISPI_INDEX_X_OFFSET];
+    uint16_t offY        = dev->vbe_regs[VBE_DISPI_INDEX_Y_OFFSET];
     uint32_t offStart    = cbLinePitch * offY;
     if (cBPP == 4)
         offStart += offX >> 1;
     else
         offStart += offX * ((cBPP + 7) >> 3);
     offStart >>= 2;
-    svga->rowoffset = RT_MIN(cbLinePitch, pThis->vram_size);
-    svga->ma_latch  = RT_MIN(offStart, pThis->vram_size);
+    svga->rowoffset = RT_MIN(cbLinePitch, dev->vram_size);
+    svga->ma_latch  = RT_MIN(offStart, dev->vram_size);
 
     /* The VBE_DISPI_INDEX_VIRT_HEIGHT is used to prevent setting resolution bigger than
      * the VRAM size permits. It is used instead of VBE_DISPI_INDEX_YRES *only* in case
-     * pThis->vbe_regs[VBE_DISPI_INDEX_VIRT_HEIGHT] < pThis->vbe_regs[VBE_DISPI_INDEX_YRES].
+     * dev->vbe_regs[VBE_DISPI_INDEX_VIRT_HEIGHT] < dev->vbe_regs[VBE_DISPI_INDEX_YRES].
      * Note that VBE_DISPI_INDEX_VIRT_HEIGHT has to be clipped to UINT16_MAX, which happens
      * with small resolutions and big VRAM. */
-    pThis->vbe_regs[VBE_DISPI_INDEX_VIRT_HEIGHT] = cVirtHeight >= UINT16_MAX ? UINT16_MAX : (uint16_t)cVirtHeight;
+    dev->vbe_regs[VBE_DISPI_INDEX_VIRT_HEIGHT] = cVirtHeight >= UINT16_MAX ? UINT16_MAX : (uint16_t)cVirtHeight;
 }
 
 void
 bochs_vbe_outw(uint16_t addr, uint16_t val, void *priv)
 {
-    bochs_vbe_t *pThis = (bochs_vbe_t *) priv;
-    svga_t * svga = &pThis->svga;
+    bochs_vbe_t *dev = (bochs_vbe_t *) priv;
+    svga_t * svga = &dev->svga;
     uint32_t max_bank;
 
     if (addr == 0x1ce) {
-        pThis->vbe_index = val;
+        dev->vbe_index = val;
     } else if ((addr == 0x1cf) || (addr == 0x1d0)) {
-    if (pThis->vbe_index <= VBE_DISPI_INDEX_NB) {
+    if (dev->vbe_index <= VBE_DISPI_INDEX_NB) {
         bool fRecalculate = false;
-        printf("VBE: write index=0x%x val=0x%x\n", pThis->vbe_index, val);
-        switch(pThis->vbe_index) {
+        printf("VBE: write index=0x%x val=0x%x\n", dev->vbe_index, val);
+        switch(dev->vbe_index) {
         case VBE_DISPI_INDEX_ID:
             if (val == VBE_DISPI_ID0 ||
                 val == VBE_DISPI_ID1 ||
                 val == VBE_DISPI_ID2 ||
                 val == VBE_DISPI_ID3 ||
                 val == VBE_DISPI_ID4 ||
+                val == VBE_DISPI_ID5 ||
                 /* VBox extensions. */
                 val == VBE_DISPI_ID_VBOX_VIDEO ||
                 val == VBE_DISPI_ID_ANYX       ||
 //                val == VBE_DISPI_ID_HGSMI      ||
                 val == VBE_DISPI_ID_CFG)
             {
-                pThis->vbe_regs[pThis->vbe_index] = val;
+                dev->vbe_regs[dev->vbe_index] = val;
             }
             break;
         case VBE_DISPI_INDEX_XRES:
             if (val <= VBE_DISPI_MAX_XRES)
             {
-                pThis->vbe_regs[pThis->vbe_index] = val;
-                pThis->vbe_regs[VBE_DISPI_INDEX_VIRT_WIDTH] = val;
+                dev->vbe_regs[dev->vbe_index] = val;
+                dev->vbe_regs[VBE_DISPI_INDEX_VIRT_WIDTH] = val;
                 fRecalculate = true;
             }
             break;
         case VBE_DISPI_INDEX_YRES:
             if (val <= VBE_DISPI_MAX_YRES)
-                pThis->vbe_regs[pThis->vbe_index] = val;
+                dev->vbe_regs[dev->vbe_index] = val;
             break;
         case VBE_DISPI_INDEX_BPP:
             if (val == 0)
                 val = 8;
             if (val == 4 || val == 8 || val == 15 ||
                 val == 16 || val == 24 || val == 32) {
-                pThis->vbe_regs[pThis->vbe_index] = val;
+                dev->vbe_regs[dev->vbe_index] = val;
                 fRecalculate = true;
             }
             break;
         case VBE_DISPI_INDEX_BANK:
-            if (pThis->vbe_regs[VBE_DISPI_INDEX_BPP] <= 4)
-                max_bank = ((pThis->vram_size >> 16) - 1) >> 2;    /* Each bank really covers 256K */
+            if (dev->vbe_regs[VBE_DISPI_INDEX_BPP] <= 4)
+                max_bank = ((dev->vram_size >> 16) - 1) >> 2;    /* Each bank really covers 256K */
                 if (val & VBE_DISPI_BANK_RD)
-                    pThis->svga.read_bank = ((pThis->vram_size >> 16) - 1) >> 2;    /* Each bank really covers 256K */
+                    dev->svga.read_bank = ((dev->vram_size >> 16) - 1) >> 2;    /* Each bank really covers 256K */
                 if (val & VBE_DISPI_BANK_WR)
-                    pThis->svga.write_bank = ((pThis->vram_size >> 16) - 1) >> 2;    /* Each bank really covers 256K */
+                    dev->svga.write_bank = ((dev->vram_size >> 16) - 1) >> 2;    /* Each bank really covers 256K */
             else
-                max_bank = ((pThis->vram_size >> 16) - 1);
+                max_bank = ((dev->vram_size >> 16) - 1);
                 if (val & VBE_DISPI_BANK_RD)
-                    pThis->svga.read_bank = ((pThis->vram_size >> 16) - 1);
+                    dev->svga.read_bank = ((dev->vram_size >> 16) - 1);
                 if (val & VBE_DISPI_BANK_WR)
-                    pThis->svga.write_bank = ((pThis->vram_size >> 16) - 1);
+                    dev->svga.write_bank = ((dev->vram_size >> 16) - 1);
             /* Old software may pass garbage in the high byte of bank. If the maximum
              * bank fits into a single byte, toss the high byte the user supplied.
              */
@@ -655,46 +658,46 @@ bochs_vbe_outw(uint16_t addr, uint16_t val, void *priv)
                 val &= 0xff;
             if (val > max_bank)
                 val = max_bank;
-            pThis->vbe_regs[pThis->vbe_index] = val;
-            pThis->svga.read_bank = (val << 16);
+            dev->vbe_regs[dev->vbe_index] = val;
+            dev->svga.read_bank = (val << 16);
 
             break;
 
         case VBE_DISPI_INDEX_ENABLE:
         {
             if ((val & VBE_DISPI_ENABLED) &&
-                !(pThis->vbe_regs[VBE_DISPI_INDEX_ENABLE] & VBE_DISPI_ENABLED)) {
+                !(dev->vbe_regs[VBE_DISPI_INDEX_ENABLE] & VBE_DISPI_ENABLED)) {
                 int h, shift_control;
                 /* Check the values before we screw up with a resolution which is too big or small. */
-                size_t cb = pThis->vbe_regs[VBE_DISPI_INDEX_XRES];
-                if (pThis->vbe_regs[VBE_DISPI_INDEX_BPP] == 4)
-                    cb = pThis->vbe_regs[VBE_DISPI_INDEX_XRES] >> 1;
+                size_t cb = dev->vbe_regs[VBE_DISPI_INDEX_XRES];
+                if (dev->vbe_regs[VBE_DISPI_INDEX_BPP] == 4)
+                    cb = dev->vbe_regs[VBE_DISPI_INDEX_XRES] >> 1;
                 else
-                    cb = pThis->vbe_regs[VBE_DISPI_INDEX_XRES] * ((pThis->vbe_regs[VBE_DISPI_INDEX_BPP] + 7) >> 3);
-                cb *= pThis->vbe_regs[VBE_DISPI_INDEX_YRES];
-                uint16_t cVirtWidth = pThis->vbe_regs[VBE_DISPI_INDEX_VIRT_WIDTH];
+                    cb = dev->vbe_regs[VBE_DISPI_INDEX_XRES] * ((dev->vbe_regs[VBE_DISPI_INDEX_BPP] + 7) >> 3);
+                cb *= dev->vbe_regs[VBE_DISPI_INDEX_YRES];
+                uint16_t cVirtWidth = dev->vbe_regs[VBE_DISPI_INDEX_VIRT_WIDTH];
                 if (!cVirtWidth)
-                    cVirtWidth = pThis->vbe_regs[VBE_DISPI_INDEX_XRES];
+                    cVirtWidth = dev->vbe_regs[VBE_DISPI_INDEX_XRES];
                 if (    !cVirtWidth
-                    ||  !pThis->vbe_regs[VBE_DISPI_INDEX_YRES]
-                    ||  cb > pThis->vram_size)
+                    ||  !dev->vbe_regs[VBE_DISPI_INDEX_YRES]
+                    ||  cb > dev->vram_size)
                 {
                     printf("VIRT WIDTH=%d YRES=%d cb=%d vram_size=%d\n",
-                                     pThis->vbe_regs[VBE_DISPI_INDEX_VIRT_WIDTH], pThis->vbe_regs[VBE_DISPI_INDEX_YRES], cb, pThis->vram_size);
+                                     dev->vbe_regs[VBE_DISPI_INDEX_VIRT_WIDTH], dev->vbe_regs[VBE_DISPI_INDEX_YRES], cb, dev->vram_size);
                     return; /* Note: silent failure like before */
                 }
 
                 /* When VBE interface is enabled, it is reset. */
-                pThis->vbe_regs[VBE_DISPI_INDEX_X_OFFSET] = 0;
-                pThis->vbe_regs[VBE_DISPI_INDEX_Y_OFFSET] = 0;
+                dev->vbe_regs[VBE_DISPI_INDEX_X_OFFSET] = 0;
+                dev->vbe_regs[VBE_DISPI_INDEX_Y_OFFSET] = 0;
                 fRecalculate = true;
 
                 /* clear the screen (should be done in BIOS) */
                 if (!(val & VBE_DISPI_NOCLEARMEM)) {
-                    uint16_t cY = RT_MIN(pThis->vbe_regs[VBE_DISPI_INDEX_YRES],
-                                         pThis->vbe_regs[VBE_DISPI_INDEX_VIRT_HEIGHT]);
-                    uint16_t cbLinePitch = pThis->svga.rowoffset;
-                    memset(pThis->svga.vram, 0,
+                    uint16_t cY = RT_MIN(dev->vbe_regs[VBE_DISPI_INDEX_YRES],
+                                         dev->vbe_regs[VBE_DISPI_INDEX_VIRT_HEIGHT]);
+                    uint16_t cbLinePitch = dev->svga.rowoffset;
+                    memset(dev->svga.vram, 0,
                            cY * cbLinePitch);
                 }
 
@@ -702,11 +705,11 @@ bochs_vbe_outw(uint16_t addr, uint16_t val, void *priv)
                    in BIOS) */
                 svga->gdcreg[0x06] = (svga->gdcreg[0x06] & ~0x0c) | 0x05; /* graphic mode + memory map 1 */
                 svga->crtc[0x17] |= 3; /* no CGA modes */
-                svga->crtc[0x13] = pThis->svga.rowoffset >> 3;
+                svga->crtc[0x13] = dev->svga.rowoffset >> 3;
                 /* width */
                 svga->crtc[0x01] = (cVirtWidth >> 3) - 1;
                 /* height (only meaningful if < 1024) */
-                h = pThis->vbe_regs[VBE_DISPI_INDEX_YRES] - 1;
+                h = dev->vbe_regs[VBE_DISPI_INDEX_YRES] - 1;
                 svga->crtc[0x12] = h;
                 svga->crtc[0x07] = (svga->crtc[0x07] & ~0x42) |
                     ((h >> 7) & 0x02) | ((h >> 3) & 0x40);
@@ -715,7 +718,7 @@ bochs_vbe_outw(uint16_t addr, uint16_t val, void *priv)
                 svga->crtc[0x07] |= 0x10;
                 svga->crtc[0x09] |= 0x40;
 
-                if (pThis->vbe_regs[VBE_DISPI_INDEX_BPP] == 4) {
+                if (dev->vbe_regs[VBE_DISPI_INDEX_BPP] == 4) {
                     shift_control = 0;
                     svga->seqregs[0x01] &= ~8; /* no double line */
                 } else {
@@ -738,16 +741,16 @@ bochs_vbe_outw(uint16_t addr, uint16_t val, void *priv)
                 /* sunlover 21.12.2006
                  * Here is probably more to reset. When this was executed in GC
                  * then the *update* functions could not detect a mode change.
-                 * Or may be these update function should take the pThis->vbe_regs[pThis->vbe_index]
+                 * Or may be these update function should take the dev->vbe_regs[dev->vbe_index]
                  * into account when detecting a mode change.
                  *
                  * The 'mode reset not detected' problem is now fixed by executing the
                  * VBE_DISPI_INDEX_ENABLE case always in RING3 in order to call the
                  * LFBChange callback.
                  */
-                pThis->svga.read_bank = pThis->svga.write_bank = 0;
+                dev->svga.read_bank = dev->svga.write_bank = 0;
             }
-            pThis->vbe_regs[pThis->vbe_index] = val;
+            dev->vbe_regs[dev->vbe_index] = val;
             /*
              * LFB video mode is either disabled or changed. Notify the display
              * and reset VBVA.
@@ -758,15 +761,15 @@ bochs_vbe_outw(uint16_t addr, uint16_t val, void *priv)
                 new_bank_gran = 32;
             else
                 new_bank_gran = 64;
-            if (pThis->bank_gran != new_bank_gran) {
-                pThis->bank_gran = new_bank_gran;
-                pThis->svga.read_bank = pThis->svga.write_bank = 0;
+            if (dev->bank_gran != new_bank_gran) {
+                dev->bank_gran = new_bank_gran;
+                dev->svga.read_bank = dev->svga.write_bank = 0;
             }
             if (val & VBE_DISPI_8BIT_DAC)
-                pThis->svga.adv_flags &= ~FLAG_RAMDAC_SHIFT;
+                dev->svga.adv_flags &= ~FLAG_RAMDAC_SHIFT;
             else
-                pThis->svga.adv_flags |= FLAG_RAMDAC_SHIFT;
-            pThis->vbe_regs[pThis->vbe_index] &= ~VBE_DISPI_NOCLEARMEM;
+                dev->svga.adv_flags |= FLAG_RAMDAC_SHIFT;
+            dev->vbe_regs[dev->vbe_index] &= ~VBE_DISPI_NOCLEARMEM;
 
             /* The VGA region is (could be) affected by this change; reset all aliases we've created. */
             break;
@@ -775,26 +778,26 @@ bochs_vbe_outw(uint16_t addr, uint16_t val, void *priv)
         case VBE_DISPI_INDEX_X_OFFSET:
         case VBE_DISPI_INDEX_Y_OFFSET:
             {
-                pThis->vbe_regs[pThis->vbe_index] = val;
-            if (pThis->vbe_index == VBE_DISPI_INDEX_X_OFFSET || pThis->vbe_index == VBE_DISPI_INDEX_Y_OFFSET) {
-                svga_t *svga = &pThis->svga;
+                dev->vbe_regs[dev->vbe_index] = val;
+            if (dev->vbe_index == VBE_DISPI_INDEX_X_OFFSET || dev->vbe_index == VBE_DISPI_INDEX_Y_OFFSET) {
+                svga_t *svga = &dev->svga;
                 if (svga->bpp == 4) {
-                    svga->rowoffset = (pThis->vbe_regs[VBE_DISPI_INDEX_VIRT_WIDTH] / 2) >> 3;
-                    svga->ma_latch  = (pThis->vbe_regs[VBE_DISPI_INDEX_Y_OFFSET] * svga->rowoffset) +
-                                    (pThis->vbe_regs[VBE_DISPI_INDEX_X_OFFSET] >> 3);
+                    svga->rowoffset = (dev->vbe_regs[VBE_DISPI_INDEX_VIRT_WIDTH] / 2) >> 3;
+                    svga->ma_latch  = (dev->vbe_regs[VBE_DISPI_INDEX_Y_OFFSET] * svga->rowoffset) +
+                                    (dev->vbe_regs[VBE_DISPI_INDEX_X_OFFSET] >> 3);
                 } else {
-                    svga->rowoffset = pThis->vbe_regs[VBE_DISPI_INDEX_VIRT_WIDTH] * ((svga->bpp == 15) ? 2 : (svga->bpp / 8));
-                    svga->ma_latch = (pThis->vbe_regs[VBE_DISPI_INDEX_Y_OFFSET] * svga->rowoffset) +
-                                    (pThis->vbe_regs[VBE_DISPI_INDEX_X_OFFSET] * ((svga->bpp == 15) ? 2 : (svga->bpp / 8)));            
+                    svga->rowoffset = dev->vbe_regs[VBE_DISPI_INDEX_VIRT_WIDTH] * ((svga->bpp == 15) ? 2 : (svga->bpp / 8));
+                    svga->ma_latch = (dev->vbe_regs[VBE_DISPI_INDEX_Y_OFFSET] * svga->rowoffset) +
+                                    (dev->vbe_regs[VBE_DISPI_INDEX_X_OFFSET] * ((svga->bpp == 15) ? 2 : (svga->bpp / 8)));            
                 }
-                if (svga->ma_latch != pThis->ma_latch_old) {
+                if (svga->ma_latch != dev->ma_latch_old) {
                     if (svga->bpp == 4) {
-                        svga->maback = (svga->maback - (pThis->ma_latch_old << 2)) +
+                        svga->maback = (svga->maback - (dev->ma_latch_old << 2)) +
                                     (svga->ma_latch << 2);
                     } else {
-                        svga->maback = (svga->maback - (pThis->ma_latch_old)) +
+                        svga->maback = (svga->maback - (dev->ma_latch_old)) +
                                         (svga->ma_latch);
-                        pThis->ma_latch_old = svga->ma_latch;
+                        dev->ma_latch_old = svga->ma_latch;
                     }
                 }
             }
@@ -806,7 +809,7 @@ bochs_vbe_outw(uint16_t addr, uint16_t val, void *priv)
             /* Changes in the VGA device are minimal. The device is bypassed. The driver does all work. */
             break;
         default:
-            pThis->vbe_regs[pThis->vbe_index] = val;
+            dev->vbe_regs[dev->vbe_index] = val;
             break;
         }
 
@@ -1089,7 +1092,7 @@ bochs_vbe_init(const device_t *info)
                 0xc0000, 0x10000, 0xffff, 0x0000,
                 MEM_MAPPING_EXTERNAL);
     } else {
-        rom_init(&dev->bios_rom, "roms/video/bochs/VGABIOS-lgpl-latest.bin",
+        rom_init(&dev->bios_rom, "roms/video/bochs/VGABIOS-lgpl-latest-debug.bin",
                 0xc0000, 0x10000, 0xffff, 0x0000,
                 MEM_MAPPING_EXTERNAL);
     }
@@ -1143,14 +1146,13 @@ bochs_vbe_init(const device_t *info)
 static int
 bochs_vbe_available(void)
 {
-/*
-    if (dev->id5_val == VBE_DISPI_ID4) {
-        return rom_present("roms/video/VBoxVgaBiosBin/VBoxVgaBios386.rom");
+    if ((dev->id5_val) == (VBE_DISPI_ID4) && (rom_present("roms/video/VBoxVgaBiosBin/VBoxVgaBios386.rom"))) {
+        return 1;
+    } else if ((dev->id5_val) == (VBE_DISPI_ID5) && (rom_present("roms/video/bochs/VGABIOS-lgpl-latest-debug.bin"))) {
+        return 1;
     } else {
-        return rom_present("roms/video/bochs/VGABIOS-lgpl-latest.bin");
+        return 0;
     }
-*/
-    return 1;
 }
 
 void
