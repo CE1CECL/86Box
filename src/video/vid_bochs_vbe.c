@@ -1146,9 +1146,7 @@ bochs_vbe_init(const device_t *info)
 static int
 bochs_vbe_available(void)
 {
-    if ((dev->id5_val) == (VBE_DISPI_ID4) && (rom_present("roms/video/VBoxVgaBiosBin/VBoxVgaBios386.rom"))) {
-        return 1;
-    } else if ((dev->id5_val) == (VBE_DISPI_ID5) && (rom_present("roms/video/bochs/VGABIOS-lgpl-latest-debug.bin"))) {
+    if ((rom_present("roms/video/bochs/VGABIOS-lgpl-latest-debug.bin")) && (rom_present("roms/video/VBoxVgaBiosBin/VBoxVgaBios386.rom"))) {
         return 1;
     } else {
         return 0;
